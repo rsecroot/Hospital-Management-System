@@ -3,24 +3,24 @@
 
 **Product Information:**
 
-- Vendor Homepage: (https://phpgurukul.com/news-portal-using-python-django-and-mysql/)
+- Vendor Homepage: (https://phpgurukul.com/hospital-management-system-using-python-django-and-mysql/)
 - Affected Version: [<= v1.0]
 - BUG Author: Ravi Sharma
 
 **Vulnerability Details**
 
-- Type: Stored Cross-Site Scripting (XSS) via Unrestricted SVG File Upload in News Management System
-- Affected URL: http://127.0.0.1:8000/AdminProfile, http://127.0.0.1:8000/AddSubadmin, http://127.0.0.1:8000/ViewSubadmin/9
-- Vulnerable Parameter:  /newsportal/onps/adminviews.py, /newsportal/onps/views.py - Profile Pic
+- Type: Stored Cross-Site Scripting (XSS) via Unrestricted SVG File Upload in Hospital Management System
+- Affected URL: http://127.0.0.1:8000/Admin/ViewDoctorDetails/6, http://127.0.0.1:8000/Profile, http://127.0.0.1:8000/docsignup/, http://127.0.0.1:8000/PatientRegsitratios
+- Vulnerable Parameter:  /hms/hospital/docappsystem/adminviews.py, /hms/hospital/docappsystem/docviews.py,/hms/hospital/docappsystem/userviews.py - Profile Pic
 
 **Vulnerable Files:**
 
-- File Name: /newsportal/
-- Path: /newsportal/onps/adminviews.py, /newsportal/onps/views.py
+- File Name: /hms/hospital/
+- Path: /hms/hospital/docappsystem/adminviews.py, /hms/hospital/docappsystem/docviews.py,/hms/hospital/docappsystem/userviews.py
 
 **Vulnerability Type**
 
-- Stored Cross-Site Scripting CWE: CWE-79, CWE-434, CWE-80
+- Stored Cross-Site Scripting CWE: CWE-79, CWE-434, CWE-80, CWE-601
 - Severity Level: 8.7 (HIGH)
 
 **Root Cause:**
@@ -28,45 +28,34 @@
 The vulnerability exists due to the following security deficiencies in the file upload implementation:
 
 1. **Lack of File Type Validation:**
-```# VULNERABLE CODE EXAMPLE from adminviews.py (Line 22)
-pic = request.FILES.get('profile_pic') 
-
-# File is directly assigned without any checks
-user = CustomUser(
-    # ... other fields ...
-    profile_pic = pic, 
-)
-user.save()
-```
-
-2. **Profile Picture Update - ADMIN_PROFILE_UPDATE Function:**
-File: views.py, Lines: 126-147
-
-Function: ADMIN_PROFILE_UPDATE(request)
-
-```@login_required(login_url = '/')
-def ADMIN_PROFILE_UPDATE(request):
+File: docviews.py, Function: DOCSIGNUP() (Lines 8-55), Endpoint: /docsignup or /doctor/signup
+```def DOCSIGNUP(request):  # No @login_required decorator
     if request.method == "POST":
-        profile_pic = request.FILES.get('profile_pic')
-
-if profile_pic !=None and profile_pic != "":
-               customuser.profile_pic = profile_pic 
-            customuser.save()
+        pic = request.FILES.get('pic')  # No validation
+        # ... other fields ...
+        
+        user = CustomUser(
+            # ... other fields ...
+            profile_pic = pic,  # Directly saved
+        )
+        user.save()
 ```
 
-3. **Subadmin Profile Update - SUBADMIN_PROFILE_UPDATE Function:**
-
-File: adminviews.py, Lines: 89-122
-Function: SUBADMIN_PROFILE_UPDATE(request)
-```
-@login_required(login_url='/')
-def SUBADMIN_PROFILE_UPDATE(request):
+2. **File: userviews.py, Function: PATIENTREGISTRATION() (Lines 14-52), Endpoint: /patreg or /patient/registration**
+```def PATIENTREGISTRATION(request):  # No @login_required decorator
     if request.method == "POST":
-        profile_pic = request.FILES.get('profile_pic')
-
-  if profile_pic:
-                customuser.profile_pic = profile_pic 
-            customuser.save()
+        pic = request.FILES.get('pic')  # No validation
+        # ... other fields ...
+        
+        user = CustomUser(
+            first_name=first_name,
+            last_name=last_name,
+            username=username,
+            email=email,
+            user_type=3,
+            profile_pic = pic,  # Directly saved
+        )
+        user.save()
 ```
 **Security Failures:**
 
@@ -79,77 +68,140 @@ def SUBADMIN_PROFILE_UPDATE(request):
 
 **Impact:**
 
-Django application accepts file uploads without validation. Missing FileExtensionValidator and content verification. Allows SVG files with embedded JavaScript to be stored and rendered.
+Hospital Management System Django application accepts file uploads without validation. Missing FileExtensionValidator and content verification. Allows SVG files with embedded JavaScript to be stored and rendered.
 
 **Vulnerability Details:**
 -------------------------------------------------------------------------------------------------------------------------------------
 
 **Description:**
 
-The Django News Management Application contains multiple Stored Cross-Site Scripting (XSS) vulnerabilities through unrestricted file upload functionality. The application fails to properly validate, sanitize, and restrict file types during the upload process across multiple endpoints including profile picture uploads and news post image uploads.
+A stored cross-site scripting (XSS) vulnerability exists in the profile image upload functionality of the application. An attacker can upload a malicious file containing JavaScript payloads while registering as a doctor or patient. The uploaded file is later rendered without proper sanitization in administrative interfaces, causing arbitrary JavaScript execution in the context of privileged users such as administrators.
 
-An authenticated attacker can exploit this vulnerability by uploading malicious files (SVG, HTML, or specially crafted image files) containing JavaScript code. When other users (including administrators) view pages that display these uploaded files, the malicious JavaScript executes in their browser context, potentially leading to session hijacking, credential theft, privilege escalation, and complete account takeover.
-
-The vulnerability exists in three locations:
-http://127.0.0.1:8000/AdminProfile
-http://127.0.0.1:8000/AddSubadmin
-http://127.0.0.1:8000/ViewSubadmin/9
+The vulnerability exists in following locations:
+http://127.0.0.1:8000/Admin/ViewDoctorDetails/6
+http://127.0.0.1:8000/Profile
+http://127.0.0.1:8000/docsignup/
+http://127.0.0.1:8000/PatientRegsitratios
 
 The application accepts SVG files without content inspection or sanitization. When these files are rendered in the browser (either by viewing user profiles or opening images in new tabs), the embedded JavaScript executes in the security context of any user viewing the content, including other administrators.
 
+Key Vulnerability Aspects:
+
+- Unauthenticated Access: No login required to upload malicious files
+- Multiple Entry Points: Doctor registration, Patient registration
+- No File Validation: Accepts any file type (SVG, HTML, executable content)
+- Admin Trigger Point: XSS executes when admin views registered user lists
+- Persistent Storage: Malicious files stored permanently in database
+
 **Vulnerable Code Example:**
 
-/News-Portal-Python-Django-Project/newsportal/onps/adminviews.py
-/News-Portal-Python-Django-Project/newsportal/onps/views.py
+/hms/hospital/docappsystem/adminviews.py
+/hms/hospital/docappsystem/docviews.py
+/hms/hospital/docappsystem/userviews.py
 
-<img width="564" height="101" alt="Screenshot 2026-01-12 at 16 40 15" src="https://github.com/user-attachments/assets/81a9e7e3-d24c-4d74-ac05-cc01b8da458e" />
+<img width="905" height="827" alt="Screenshot 2026-01-14 at 17 03 39" src="https://github.com/user-attachments/assets/e5a21677-42f7-4939-9cb0-7b56280aa2b5" />
 
-<img width="602" height="163" alt="Screenshot 2026-01-12 at 16 40 53" src="https://github.com/user-attachments/assets/c39d3342-3182-4cff-ae48-c4ba20e5fa79" />
+<img width="719" height="620" alt="Screenshot 2026-01-14 at 17 04 13" src="https://github.com/user-attachments/assets/9daedd83-c05c-4e3d-bbcd-b0f594cf96a4" />
 
 **Step-by-Step Reproduction:**
 ### **Trigger XSS as Admin**
 
 **First Scenario:**
 1. Login as Admin
-2. Navigate to: http://127.0.0.1:8000/AdminProfile, http://127.0.0.1:8000/ViewSubadmin/9
+2. Navigate to: http://127.0.0.1:8000/Profile
 3. Click "Browse..." under "Upload Profile Pic"
 4. Select: malicious.svg
 5. Click "Update"
 6. File uploaded to: /malicious.svg and triggerd as XSS attack.
 
+<img width="1399" height="861" alt="Screenshot 2026-01-14 at 13 53 14" src="https://github.com/user-attachments/assets/5a8cb08f-ec98-49ba-bff4-5473d9df523b" />
+
+<img width="1855" height="683" alt="Screenshot 2026-01-14 at 13 55 30" src="https://github.com/user-attachments/assets/7fe89d93-22a5-45e4-ac83-955e8e3eba0a" />
+
+<img width="1053" height="796" alt="Screenshot 2026-01-14 at 13 55 39" src="https://github.com/user-attachments/assets/be03e464-95aa-4363-b858-2ae0a243dd78" />
+
+
 **Second Scenario:**
-1. Login as SubAdmin
-2. Navigate to: http://127.0.0.1:8000/AddSubadmin
-3. Right Click and open image in new tab on Profile Pic
-4. Triggerd as XSS attack.
+1. Login as Doctor
+2. Navigate to: http://127.0.0.1:8000/Profie
+3. Click "Browse..." under "Upload Profile Pic"
+4. Right Click and open image in new tab on Profile Pic
+5. Triggerd as XSS attack.
 
-**Screenshots**
-[Attach screenshots showing:]
+<img width="1493" height="873" alt="Screenshot 2026-01-14 at 14 08 27" src="https://github.com/user-attachments/assets/f82e0be1-df01-4968-9d8b-ab37018b70b2" />
 
-<img width="1877" height="1214" alt="Screenshot 2026-01-11 at 18 55 03" src="https://github.com/user-attachments/assets/a81223c3-e0ae-44f5-87c7-9abc9bf72bb6" />
+<img width="1856" height="721" alt="Screenshot 2026-01-14 at 14 08 41" src="https://github.com/user-attachments/assets/fe477fb4-2ff1-4c29-8b72-04db0b1c5116" />
 
-<img width="1517" height="1244" alt="Screenshot 2026-01-11 at 18 52 59" src="https://github.com/user-attachments/assets/c8a12f8c-5ba9-4e1d-aabd-33e20b96826b" />
+<img width="1146" height="803" alt="Screenshot 2026-01-14 at 14 08 48" src="https://github.com/user-attachments/assets/f9f059fb-a192-4fb1-b77b-86a95c83b110" />
 
-<img width="1594" height="990" alt="Screenshot 2026-01-11 at 18 53 05" src="https://github.com/user-attachments/assets/7e0c21cb-61b9-41e8-95e8-26431aa5aee8" />
+**Third Scenario:**
+1. Login as Admin
+2. Navigate to "Doctor lists"
+3. View Registered doctor list and click on view profile
+4. Right Click and open image in new tab on Profile Pic
+5. Triggerd as XSS attack.
 
-<img width="1640" height="1082" alt="Screenshot 2026-01-12 at 16 48 02" src="https://github.com/user-attachments/assets/57ae5700-10bd-4843-9882-7478d2237789" />
+<img width="1820" height="885" alt="Screenshot 2026-01-14 at 14 09 38" src="https://github.com/user-attachments/assets/45d4e581-0f6f-4af1-932d-c3de1eefb876" />
 
-<img width="1594" height="990" alt="Screenshot 2026-01-11 at 18 53 05" src="https://github.com/user-attachments/assets/557e2ad5-e757-4a17-bf36-f5d1b2817498" />
+<img width="1654" height="752" alt="Screenshot 2026-01-14 at 14 10 25" src="https://github.com/user-attachments/assets/8a25c378-48ca-4299-a15a-147398e702dd" />
+
+<img width="1309" height="784" alt="Screenshot 2026-01-14 at 14 10 37" src="https://github.com/user-attachments/assets/3cbfbb6b-9628-4633-bdf8-e087fe96e658" />
+
+**Fourth Scenario:**
+1. Login as User/Patient
+2. Navigate to: http://127.0.0.1:8000/Profie
+3. Click "Browse..." under "Upload Profile Pic"
+4. Right Click and open image in new tab on Profile Pic
+5. Triggerd as XSS attack.
+
+<img width="1312" height="772" alt="Screenshot 2026-01-14 at 14 11 41" src="https://github.com/user-attachments/assets/e845f683-b446-43f9-8424-4b6e9112097b" />
+
+<img width="1843" height="468" alt="Screenshot 2026-01-14 at 14 12 10" src="https://github.com/user-attachments/assets/a91a01f3-4eec-4735-aa1d-ff45e394269e" />
+
+<img width="1331" height="891" alt="Screenshot 2026-01-14 at 14 12 17" src="https://github.com/user-attachments/assets/2047d1f6-f7d6-4a3b-a855-2360a604ca9b" />
+
+**Fifth Scenario:**
+1. Register as Doctor and User/Patient
+2. Navigate to: http://127.0.0.1:8000/docsignup/  and http://127.0.0.1:8000/PatientRegsitratios
+3. Click "Browse..." under "Upload Profile Pic" and click on register 
+4. Now login as Doctor or patient profile and click on image and it will trigger an XSS attack
+5. Also login as Admin profile and navigate to doctor list and view profile
+6. Right Click and open image in new tab on Profile Pic
+7. Triggerd as XSS attack.
+
+<img width="1276" height="1176" alt="Screenshot 2026-01-14 at 17 21 14" src="https://github.com/user-attachments/assets/c6ff6213-a909-4100-98b5-64c91508e922" />
+
+<img width="1802" height="952" alt="Screenshot 2026-01-14 at 17 22 14" src="https://github.com/user-attachments/assets/660040dd-af73-41d0-b2d4-2b59af939f81" />
+
+<img width="1674" height="698" alt="Screenshot 2026-01-14 at 17 22 57" src="https://github.com/user-attachments/assets/f31c3830-b93b-420e-9185-c8ce5de1cf56" />
+
+<img width="946" height="751" alt="Screenshot 2026-01-14 at 17 23 06" src="https://github.com/user-attachments/assets/ba184379-7616-462d-9d48-fbf0046756cb" />
+
 
 **Impact Assessment:**
 
-The XSS executes with administrator privileges, allowing an attacker to:
-- Admin can upload malicious SVG
-- XSS executes when viewing Admin/SubAdmin profiles
-- Session hijacking possible
-- Admin account compromise
+A critical security vulnerability exists in the application’s file upload and profile management functionality, allowing stored cross-site scripting (XSS) attacks across multiple user roles, including administrators, doctors, and patients. The application permits the upload of malicious files (e.g., profile images) that are stored server-side and rendered without proper validation or sanitization.
+
+This flaw can be exploited through several vectors, including public registration workflows as well as authenticated profile update features. Malicious payloads are executed when affected profiles or user listings are viewed, including within administrative interfaces, without requiring any user interaction.
+
+The presence of multiple exploitation paths significantly increases risk, as the vulnerability is not confined to a single feature or role, but represents a system-wide input validation and output handling failure. Immediate remediation is required to prevent account takeover, data breaches, regulatory violations, and reputational damage.
+
+**Attack Chain**
+
+- An unauthenticated attacker registers a new doctor or patient account via the public homepage.
+- During registration, the attacker uploads a malicious file containing a stored XSS payload.
+- The payload is stored on the server and associated with the user profile.
+- An administrator accesses the doctor management interface.
+- The stored XSS payload executes in the administrator’s browser.
 
 **Affected Components:**
 
-- Profile Picture Upload Functionality
-- Admin Profile Upload Functionality
-- SubAdmin Profile Update Functionality
-- News Post Image Upload Functionality
+- Admin Profile Picture Upload Functionality
+- Admin Doctor list Functionality
+- Doctor List View (Admin Panel)
+- Patient Registration (Public Access)
+- Patient Registration (Public Access)
+- Registered Users View (Admin Panel)
 - File Storage and Serving
 - File Rendering - Admin/SubAdmin Page (XSS TRIGGER POINT)
 
@@ -185,58 +237,66 @@ X-Content-Type-Options: nosniff
 7. Conduct security code review
 
 # Secure Code Example:
-1. Implement File Type Validation
-from django.core.exceptions import ValidationError
-import os
+1. Add File Validation to All Registration Functions
+```from django.core.exceptions import ValidationError
 from PIL import Image
+import os
 
-ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif']
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif']
+ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/gif']
+MAX_FILE_SIZE = 2 * 1024 * 1024  # 2MB
 
-def validate_image_file(file):
-    """Validate uploaded image files"""
+def validate_profile_picture(file):
+    """Validate uploaded profile pictures"""
     
-    # Check file extension
+    if not file:
+        return None
+    
+    # Check extension
     ext = os.path.splitext(file.name)[1].lower()
-    if ext not in ALLOWED_IMAGE_EXTENSIONS:
-        raise ValidationError(f'Unsupported file extension. Allowed: {", ".join(ALLOWED_IMAGE_EXTENSIONS)}')
+    if ext not in ALLOWED_EXTENSIONS:
+        raise ValidationError(f'Invalid file type. Allowed: jpg, png, gif')
+    
+    # Check MIME type
+    if file.content_type not in ALLOWED_MIME_TYPES:
+        raise ValidationError(f'Invalid content type: {file.content_type}')
     
     # Check file size
     if file.size > MAX_FILE_SIZE:
-        raise ValidationError(f'File size exceeds maximum limit of {MAX_FILE_SIZE / (1024*1024)}MB')
+        raise ValidationError('File too large (max 2MB)')
     
-    # Verify actual image content (not just extension)
+    # Verify actual image
     try:
         img = Image.open(file)
         img.verify()
+        file.seek(0)  # Reset file pointer
     except Exception:
         raise ValidationError('Invalid image file')
     
-    # Check MIME type
-    if file.content_type not in ['image/jpeg', 'image/png', 'image/gif']:
-        raise ValidationError(f'Invalid content type: {file.content_type}')
-    
-    return file
+    return file```
 
-**#2. Update All Upload Functions:**
 
-@login_required(login_url='/')
-def ADD_SUBADMIN(request):
+**#2. Update Doctor Registration:**
+```
+def DOCSIGNUP(request):
+    specialization = Specialization.objects.all()
     if request.method == "POST":
-        pic = request.FILES.get('profile_pic')
+        pic = request.FILES.get('pic')
         
+        # VALIDATE FILE
         try:
             if pic:
-                validate_image_file(pic)
+                pic = validate_profile_picture(pic)
         except ValidationError as e:
             messages.error(request, str(e))
-            return redirect('add_subadmin')
+            return redirect('docsignup')
         
-        # ... rest of the code ...
-
+        # ... rest of code ...
+```
 **References**
 
 - OWASP Unrestricted File Upload: https://owasp.org/www-community/vulnerabilities/Unrestricted_File_Upload
 - CWE-79: https://cwe.mitre.org/data/definitions/79.html
 - CWE-434: https://cwe.mitre.org/data/definitions/434.html
 - CWE-80: https://cwe.mitre.org/data/definitions/80.html
+- CWE-601: https://cwe.mitre.org/data/definitions/601.html
